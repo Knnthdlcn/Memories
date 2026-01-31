@@ -31,6 +31,12 @@ export async function GET(
     return new NextResponse('Missing id', { status: 400 })
   }
 
+  // Check env vars early and return helpful error
+  if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET || !process.env.GOOGLE_REFRESH_TOKEN) {
+    console.error('Missing Google OAuth env vars')
+    return new NextResponse('Server configuration error: Missing Google credentials', { status: 500 })
+  }
+
   try {
     const buf = await downloadFromGoogleDrive(id)
 
@@ -55,12 +61,13 @@ export async function GET(
     return new NextResponse(new Blob([toU8(buf)]), {
       status: 200,
       headers: {
-        'Content-Type': 'application/octet-stream',
+        'Content-Type': 'image/jpeg',
         'Cache-Control': 'public, max-age=604800, stale-while-revalidate=86400'
       }
     })
   } catch (e: any) {
+    console.error('Drive media fetch error:', e)
     const msg = e?.message || 'Failed to fetch from Drive'
-    return new NextResponse(msg, { status: 502 })
+    return new NextResponse(`Error: ${msg}`, { status: 502 })
   }
 }

@@ -31,10 +31,14 @@ async function getAccessToken(): Promise<string> {
     return tokenCache.accessToken
   }
 
+  const clientId = requireEnv('GOOGLE_CLIENT_ID')
+  const clientSecret = requireEnv('GOOGLE_CLIENT_SECRET')
+  const refreshToken = requireEnv('GOOGLE_REFRESH_TOKEN')
+
   const body = new URLSearchParams({
-    client_id: requireEnv('GOOGLE_CLIENT_ID'),
-    client_secret: requireEnv('GOOGLE_CLIENT_SECRET'),
-    refresh_token: requireEnv('GOOGLE_REFRESH_TOKEN'),
+    client_id: clientId,
+    client_secret: clientSecret,
+    refresh_token: refreshToken,
     grant_type: 'refresh_token',
   })
 
@@ -46,7 +50,8 @@ async function getAccessToken(): Promise<string> {
 
   if (!response.ok) {
     const text = await response.text()
-    throw new Error(`Failed to refresh access token: ${text}`)
+    console.error('OAuth token refresh failed:', response.status, text)
+    throw new Error(`Failed to refresh access token (${response.status}): ${text}`)
   }
 
   const data = await response.json()
@@ -54,6 +59,7 @@ async function getAccessToken(): Promise<string> {
   const expiresIn = typeof data.expires_in === 'number' ? data.expires_in : 3600
 
   if (!accessToken) {
+    console.error('OAuth response missing access_token:', data)
     throw new Error('Missing access token from Google OAuth response')
   }
 
@@ -85,7 +91,8 @@ async function driveFetchArrayBuffer(url: string, init: RequestInit = {}): Promi
   const response = await driveFetch(url, init)
   if (!response.ok) {
     const text = await response.text()
-    throw new Error(`Drive API error: ${response.status} ${text}`)
+    console.error('Drive API error:', response.status, text)
+    throw new Error(`Drive API error (${response.status}): ${text}`)
   }
   return response.arrayBuffer()
 }
