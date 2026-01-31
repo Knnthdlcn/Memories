@@ -2,6 +2,8 @@ import React from 'react'
 import { prisma } from '@/src/lib/prisma'
 import MediaGrid from '@/src/components/MediaGrid'
 
+export const dynamic = 'force-dynamic'
+
 export default async function Gallery(){
   const items = await prisma.media.findMany({ orderBy: { dateTaken: 'desc' }, take: 1000 })
   return (
