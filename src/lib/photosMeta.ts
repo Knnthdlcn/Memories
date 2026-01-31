@@ -7,6 +7,7 @@ export type PhotoMeta = {
   order?: number
   dateOverride?: string
   updatedAt?: string
+  migratedToDriveUrl?: string
 }
 
 export type PhotoMetaStore = Record<string, PhotoMeta>
