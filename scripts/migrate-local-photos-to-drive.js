@@ -1,7 +1,12 @@
 const fs = require('fs');
 const fsp = require('fs/promises');
 const path = require('path');
-const { google } = require('googleapis');
+
+const TOKEN_URL = 'https://oauth2.googleapis.com/token';
+const DRIVE_API_BASE = 'https://www.googleapis.com/drive/v3';
+const DRIVE_UPLOAD_BASE = 'https://www.googleapis.com/upload/drive/v3';
+
+let tokenCache = null;
 
 function loadEnv() {
   const envPath = path.join(process.cwd(), '.env.local');
@@ -18,49 +23,119 @@ function loadEnv() {
   });
 }
 
-function getDriveClient() {
-  const oauth2Client = new google.auth.OAuth2(
-    process.env.GOOGLE_CLIENT_ID,
-    process.env.GOOGLE_CLIENT_SECRET,
-    process.env.GOOGLE_REDIRECT_URI
-  );
-  oauth2Client.setCredentials({
-    refresh_token: process.env.GOOGLE_REFRESH_TOKEN,
-  });
-  return google.drive({ version: 'v3', auth: oauth2Client });
+function requireEnv(name) {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`Missing ${name} in .env.local`);
+  }
+  return value;
 }
 
-async function findFolderId(drive, parentId, name) {
-  const res = await drive.files.list({
-    q: `name='${name.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`,
-    fields: 'files(id, name)',
-    supportsAllDrives: true,
-    includeItemsFromAllDrives: true,
+async function getAccessToken() {
+  if (tokenCache && Date.now() < tokenCache.expiresAt - 60_000) {
+    return tokenCache.accessToken;
+  }
+
+  const body = new URLSearchParams({
+    client_id: requireEnv('GOOGLE_CLIENT_ID'),
+    client_secret: requireEnv('GOOGLE_CLIENT_SECRET'),
+    refresh_token: requireEnv('GOOGLE_REFRESH_TOKEN'),
+    grant_type: 'refresh_token',
   });
-  const first = res.data.files && res.data.files[0];
+
+  const response = await fetch(TOKEN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body,
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Failed to refresh access token: ${text}`);
+  }
+
+  const data = await response.json();
+  const accessToken = data.access_token;
+  const expiresIn = typeof data.expires_in === 'number' ? data.expires_in : 3600;
+
+  if (!accessToken) {
+    throw new Error('Missing access token from Google OAuth response');
+  }
+
+  tokenCache = {
+    accessToken,
+    expiresAt: Date.now() + expiresIn * 1000,
+  };
+
+  return accessToken;
+}
+
+function buildUrl(base, pathname, params) {
+  const url = new URL(pathname, base);
+  if (params) {
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined) url.searchParams.set(key, value);
+    });
+  }
+  return url.toString();
+}
+
+async function driveFetch(url, init = {}) {
+  const token = await getAccessToken();
+  const headers = new Headers(init.headers || {});
+  headers.set('Authorization', `Bearer ${token}`);
+  return fetch(url, { ...init, headers });
+}
+
+async function driveFetchJson(url, init = {}) {
+  const response = await driveFetch(url, init);
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Drive API error: ${response.status} ${text}`);
+  }
+  return response.json();
+}
+
+async function findFolderId(parentId, name) {
+  const safeName = name.replace(/'/g, "\\'");
+  const listUrl = buildUrl(DRIVE_API_BASE, '/files', {
+    q: `name='${safeName}' and mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`,
+    fields: 'files(id, name)',
+    supportsAllDrives: 'true',
+    includeItemsFromAllDrives: 'true',
+  });
+  const res = await driveFetchJson(listUrl);
+  const first = res.files && res.files[0];
   return first ? first.id : null;
 }
 
-async function ensureFolder(drive, parentId, name) {
-  const existingId = await findFolderId(drive, parentId, name);
+async function ensureFolder(parentId, name) {
+  const existingId = await findFolderId(parentId, name);
   if (existingId) return existingId;
-  const created = await drive.files.create({
-    requestBody: {
+  const createUrl = buildUrl(DRIVE_API_BASE, '/files', {
+    supportsAllDrives: 'true',
+    fields: 'id',
+  });
+  const created = await driveFetchJson(createUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json; charset=UTF-8' },
+    body: JSON.stringify({
       name,
       mimeType: 'application/vnd.google-apps.folder',
       parents: [parentId],
-    },
-    fields: 'id',
-    supportsAllDrives: true,
+    }),
   });
-  return created.data.id;
+  return created.id;
 }
 
-async function makePublic(drive, fileId) {
-  await drive.permissions.create({
-    fileId,
-    requestBody: { role: 'reader', type: 'anyone' },
-    supportsAllDrives: true,
+async function makePublic(fileId) {
+  const url = buildUrl(DRIVE_API_BASE, `/files/${fileId}/permissions`, {
+    supportsAllDrives: 'true',
+  });
+  await driveFetchJson(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json; charset=UTF-8' },
+    body: JSON.stringify({ role: 'reader', type: 'anyone' }),
   });
 }
 
@@ -119,7 +194,6 @@ async function main() {
     process.exit(1);
   }
 
-  const drive = getDriveClient();
   const meta = await readMeta();
   const photosRoot = path.join(process.cwd(), 'photos');
 
@@ -138,7 +212,7 @@ async function main() {
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const folderName = `${year}-${month}`;
 
-    const targetFolderId = await ensureFolder(drive, rootFolderId, folderName);
+    const targetFolderId = await ensureFolder(rootFolderId, folderName);
 
     const filename = path.basename(filePath);
     const mimeTypeMap = {
@@ -151,20 +225,33 @@ async function main() {
     };
     const mimeType = mimeTypeMap[ext] || 'application/octet-stream';
 
-    const stream = fs.createReadStream(filePath);
-    const response = await drive.files.create({
-      requestBody: {
-        name: filename,
-        parents: [targetFolderId],
-      },
-      media: { mimeType, body: stream },
+    const buffer = await fsp.readFile(filePath);
+    const boundary = `----memories-${Date.now()}`;
+    const multipartBody = Buffer.concat([
+      Buffer.from(`--${boundary}\r\n`),
+      Buffer.from('Content-Type: application/json; charset=UTF-8\r\n\r\n'),
+      Buffer.from(JSON.stringify({ name: filename, parents: [targetFolderId] })),
+      Buffer.from(`\r\n--${boundary}\r\n`),
+      Buffer.from(`Content-Type: ${mimeType}\r\n\r\n`),
+      buffer,
+      Buffer.from(`\r\n--${boundary}--\r\n`),
+    ]);
+
+    const uploadUrl = buildUrl(DRIVE_UPLOAD_BASE, '/files', {
+      uploadType: 'multipart',
+      supportsAllDrives: 'true',
       fields: 'id',
-      supportsAllDrives: true,
     });
 
-    const fileId = response.data.id;
+    const response = await driveFetchJson(uploadUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': `multipart/related; boundary=${boundary}` },
+      body: multipartBody,
+    });
+
+    const fileId = response.id;
     if (!fileId) continue;
-    await makePublic(drive, fileId);
+    await makePublic(fileId);
 
     const directUrl = getDirectUrl(fileId);
     meta[directUrl] = {
