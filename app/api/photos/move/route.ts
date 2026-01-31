@@ -61,6 +61,19 @@ export async function POST(req: NextRequest) {
     // Remove query parameters if present (e.g., ?w=900)
     const cleanKey = key.split('?')[0]!
     console.log('[MOVE] Clean key:', cleanKey)
+
+    // If this is a Google Drive URL, just update metadata date override
+    if (cleanKey.startsWith('https://drive.google.com')) {
+      const existingMeta = await getPhotoMeta(cleanKey)
+      await upsertPhotoMeta(cleanKey, {
+        ...existingMeta,
+        dateOverride: targetDate.toISOString()
+      })
+
+      console.log('[MOVE] ✓ Drive item date updated for:', cleanKey)
+      console.log('[MOVE] ========== END MOVE REQUEST ==========')
+      return Response.json({ ok: true, newKey: cleanKey, date: targetDate.toISOString() })
+    }
     
     const match = cleanKey.match(/^\/api\/photos\/raw\/(.+)$/)
     if (!match) {

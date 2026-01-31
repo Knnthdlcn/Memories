@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import path from 'path'
-import { uploadToGoogleDrive } from '@/lib/googleDrive'
+import { uploadToGoogleDrive } from '@/src/lib/googleDrive'
+import { upsertPhotoMeta } from '@/src/lib/photosMeta'
 
 function parseCustomDate(dateStr: string): Date {
   // Expect format like "2025-04" for month or "2025-04-15" for specific date
@@ -64,11 +65,24 @@ export async function POST(req: NextRequest) {
     }
     const mimeType = mimeTypeMap[ext] || 'application/octet-stream'
 
+    // Build Drive folder name: YYYY-MM or YYYY-MM-DD (single folder)
+    const yearStr = String(targetDate.getFullYear())
+    const monthStr = String(targetDate.getMonth() + 1).padStart(2, '0')
+    const dayStr = String(targetDate.getDate()).padStart(2, '0')
+    const folderName = dateValue ? `${yearStr}-${monthStr}-${dayStr}` : `${yearStr}-${monthStr}`
+    const folderPath = [folderName]
+
     // Upload to Google Drive
-    const { fileId, directUrl } = await uploadToGoogleDrive(buffer, filename, mimeType)
+    const { fileId, directUrl } = await uploadToGoogleDrive(buffer, filename, mimeType, { folderPath })
 
     // Return the Google Drive URL as the key
     const key = directUrl
+
+    // Save metadata to photos-meta.json
+    await upsertPhotoMeta(key, {
+      dateOverride: targetDate.toISOString(),
+      updatedAt: new Date().toISOString(),
+    })
 
     return Response.json({ 
       ok: true, 
@@ -83,13 +97,5 @@ export async function POST(req: NextRequest) {
       ok: false, 
       error: error.message || 'Upload failed' 
     }, { status: 500 })
-  }
-}
-      filename,
-      date: targetDate.toISOString()
-    })
-  } catch (error: any) {
-    console.error('Upload photo error:', error)
-    return Response.json({ ok: false, error: error.message || 'Upload failed' })
   }
 }

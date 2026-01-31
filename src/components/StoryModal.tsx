@@ -84,13 +84,22 @@ export default function StoryModal({
               <div className="text-sm text-purple-700/70">{dateLabel}</div>
             </div>
 
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-3 py-2 rounded-lg bg-white/60 border border-white/70 text-purple-700 hover:bg-white/75"
-            >
-              Close
-            </button>
+            <div className="flex items-center gap-2">
+              <a
+                href={item.srcFull}
+                download
+                className="px-3 py-2 rounded-lg bg-white/60 border border-white/70 text-purple-700 hover:bg-white/75"
+              >
+                Download
+              </a>
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-3 py-2 rounded-lg bg-white/60 border border-white/70 text-purple-700 hover:bg-white/75"
+              >
+                Close
+              </button>
+            </div>
           </div>
 
           <div className="flex flex-col md:grid md:grid-cols-5 gap-3 md:gap-4 flex-1 min-h-0">

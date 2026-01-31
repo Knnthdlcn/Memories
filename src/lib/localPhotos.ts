@@ -134,11 +134,50 @@ export async function getLocalPhotos(): Promise<LocalPhoto[]> {
   const root = path.join(process.cwd(), 'photos')
   const meta = await getPhotoMetaStore()
 
+  // First, get photos from Google Drive (stored in meta with drive URLs)
+  const drivePhotos: LocalPhoto[] = []
+  for (const [key, m] of Object.entries(meta)) {
+    // Google Drive URLs start with https://drive.google.com
+    if (key.startsWith('https://drive.google.com')) {
+      const dateStr = m.dateOverride || m.updatedAt
+      let date = new Date()
+      if (dateStr) {
+        const parsed = Date.parse(dateStr)
+        if (!isNaN(parsed)) {
+          date = new Date(parsed)
+        }
+      }
+      
+      // Extract filename from the URL if possible, or use a generic name
+      const filename = key.split('/').pop() || 'photo.jpg'
+      
+      // Use proxy to avoid CORS issues
+      const proxyUrl = `/api/drive-proxy?url=${encodeURIComponent(key)}`
+      
+      drivePhotos.push({
+        key,
+        filename,
+        date,
+        srcThumb: proxyUrl, // Proxied URL
+        srcFull: proxyUrl,  // Proxied URL
+        message: typeof m.message === 'string' ? m.message : undefined,
+        featured: !!m.featured,
+        order: typeof m.order === 'number' ? m.order : undefined
+      })
+    }
+  }
+
+  // Then, get photos from local filesystem
   const filePaths: string[] = []
-  for await (const p of walk(root)) {
-    const ext = path.extname(p).toLowerCase()
-    if (!ALLOWED_EXT.has(ext)) continue
-    filePaths.push(p)
+  try {
+    for await (const p of walk(root)) {
+      const ext = path.extname(p).toLowerCase()
+      if (!ALLOWED_EXT.has(ext)) continue
+      filePaths.push(p)
+    }
+  } catch (error) {
+    // If photos folder doesn't exist, just use drive photos
+    console.log('Photos folder not found, using only Google Drive photos')
   }
 
   // No cache signature needed; always recompute for realtime updates.
@@ -187,7 +226,9 @@ export async function getLocalPhotos(): Promise<LocalPhoto[]> {
     })
   }
 
-  items.sort((a, b) => a.date.getTime() - b.date.getTime())
+  // Combine local and drive photos
+  const allPhotos = [...drivePhotos, ...items]
+  allPhotos.sort((a, b) => a.date.getTime() - b.date.getTime())
 
-  return items
+  return allPhotos
 }

@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -p 3000",
     "build": "next build",
     "start": "next start",
     "prisma:migrate": "prisma migrate dev --name init",
@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@prisma/client": "5.14.0",
+    "browser-image-compression": "^2.0.2",
     "exif-parser": "0.1.12",
     "framer-motion": "10.12.6",
     "googleapis": "^171.0.0",

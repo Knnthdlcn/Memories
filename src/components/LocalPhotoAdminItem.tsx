@@ -21,7 +21,11 @@ export default function LocalPhotoAdminItem({
   onDragEnd,
   onDragOver,
   onDrop,
-  isDragging
+  isDragging,
+  selectMode,
+  selected,
+  onToggleSelect,
+  registerItemRef
 }: {
   item: LocalAdminItem
   onUpdated: (next: LocalAdminItem) => void
@@ -32,6 +36,10 @@ export default function LocalPhotoAdminItem({
   onDragOver?: (e: React.DragEvent) => void
   onDrop?: (item: LocalAdminItem) => void
   isDragging?: boolean
+  selectMode?: boolean
+  selected?: boolean
+  onToggleSelect?: (key: string) => void
+  registerItemRef?: (key: string, el: HTMLDivElement | null) => void
 }){
   const [editing, setEditing] = useState(false)
   const [message, setMessage] = useState(item.message || '')
@@ -173,7 +181,8 @@ export default function LocalPhotoAdminItem({
 
   return (
     <div 
-      className={`soft-card p-3 ${isDragging ? 'opacity-50' : ''}`}
+      className={`soft-card p-3 relative ${isDragging ? 'opacity-50' : ''} ${selectMode && selected ? 'ring-2 ring-purple-500' : ''}`}
+      ref={(el) => registerItemRef?.(item.key, el)}
       onDragOver={(e) => {
         e.preventDefault()
         e.dataTransfer.dropEffect = 'move'
@@ -185,37 +194,68 @@ export default function LocalPhotoAdminItem({
       }}
     >
       <div className="flex items-center justify-between mb-2">
-        <div className="flex flex-col gap-0.5">
+        <div className="flex items-center gap-2">
+          {selectMode ? (
+            <button
+              type="button"
+              onClick={() => onToggleSelect?.(item.key)}
+              className={`px-2 py-1 rounded-full text-xs border ${selected ? 'bg-purple-600 text-white border-purple-600' : 'bg-white/80 text-purple-700 border-white/80'}`}
+              title={selected ? 'Unselect' : 'Select'}
+            >
+              {selected ? 'Selected' : 'Select'}
+            </button>
+          ) : null}
+          <div className="flex flex-col gap-0.5">
           <div className="text-xs text-purple-700/70">{dateLabel}</div>
           {folderName && folderName !== '2025' && (
             <div className="text-xs px-2 py-0.5 rounded bg-purple-100 text-purple-700 inline-block w-fit">
               📁 {folderName}
             </div>
           )}
+          </div>
         </div>
-        <button
-          type="button"
-          className="px-2 py-1 text-xs rounded border bg-white/60 cursor-move"
-          draggable
-          onDragStart={(e) => {
-            e.dataTransfer.effectAllowed = 'move'
-            e.dataTransfer.setData('text/plain', item.key)
-            onDragStart?.(item)
-          }}
-          onDragEnd={() => onDragEnd?.()}
-          title="Drag to reorder"
-        >
-          ⠿ Drag
-        </button>
+        {!selectMode ? (
+          <button
+            type="button"
+            className="px-2 py-1 text-xs rounded border bg-white/60 cursor-move"
+            draggable
+            onDragStart={(e) => {
+              e.dataTransfer.effectAllowed = 'move'
+              e.dataTransfer.setData('text/plain', item.key)
+              onDragStart?.(item)
+            }}
+            onDragEnd={() => onDragEnd?.()}
+            title="Drag to reorder"
+          >
+            ⠿ Drag
+          </button>
+        ) : null}
       </div>
-      <div className="w-full h-40 bg-purple-100/40 rounded overflow-hidden mb-2 border border-white/60">
+      <div className="w-full h-40 bg-purple-100/40 rounded overflow-hidden mb-2 border border-white/60 relative">
+        {selectMode ? (
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => onToggleSelect?.(item.key)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') onToggleSelect?.(item.key)
+            }}
+            className="absolute inset-0 z-10"
+            aria-label={selected ? 'Unselect photo' : 'Select photo'}
+          />
+        ) : null}
         <img
           src={item.srcThumb}
           alt=""
-          className="w-full h-full object-cover"
+          className={`w-full h-full object-cover ${selectMode ? 'pointer-events-none' : ''}`}
           loading="lazy"
           draggable={false}
         />
+        {selectMode ? (
+          <div className={`absolute top-2 right-2 z-20 w-7 h-7 rounded-full border-2 flex items-center justify-center ${selected ? 'bg-purple-600 border-purple-600 text-white' : 'bg-white/90 border-white'}`}>
+            {selected ? '✓' : ''}
+          </div>
+        ) : null}
       </div>
 
       <div className="flex items-center justify-between gap-2 text-xs text-purple-700/70 mb-2">
