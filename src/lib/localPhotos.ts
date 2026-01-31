@@ -94,6 +94,34 @@ function safeApiPath(root: string, filePath: string) {
   }
 }
 
+function isRawApiKey(key: string) {
+  return typeof key === 'string' && key.startsWith('/api/photos/raw/')
+}
+
+function filenameFromKey(key: string) {
+  try {
+    const parts = key.split('/').filter(Boolean)
+    const last = parts[parts.length - 1]
+    return last ? decodeURIComponent(last) : 'photo'
+  } catch {
+    return 'photo'
+  }
+}
+
+function parseDateFromRawKey(key: string): Date | undefined {
+  // Supports keys like:
+  // /api/photos/raw/2025/04/08/IMG_1234.JPG
+  // /api/photos/raw/2025/04/IMG_1234.JPG
+  const m = key.match(/^\/api\/photos\/raw\/(\d{4})\/(\d{2})(?:\/(\d{2}))?\//)
+  if (!m) return undefined
+  const year = Number(m[1])
+  const month = Number(m[2])
+  const day = m[3] ? Number(m[3]) : 1
+  if (!year || !month) return undefined
+  const d = new Date(year, month - 1, day)
+  return isValidDate(d) ? d : undefined
+}
+
 async function readExifDateAndCamera(filePath: string): Promise<{ date?: Date; camera?: string }> {
   // Read only the first chunk; EXIF is stored near the beginning for JPEGs.
   // This is best-effort and will safely fall back to filesystem timestamps.
@@ -134,37 +162,33 @@ export async function getLocalPhotos(): Promise<LocalPhoto[]> {
   const root = path.join(process.cwd(), 'photos')
   const meta = await getPhotoMetaStore()
 
-  // First, get photos from Google Drive (stored in meta with drive URLs)
-  const drivePhotos: LocalPhoto[] = []
+  // Build a baseline list from meta so the app works even when the local `photos/`
+  // folder isn't present (e.g. Vercel deployments).
+  const byKey = new Map<string, LocalPhoto>()
   for (const [key, m] of Object.entries(meta)) {
-    // Google Drive URLs start with https://drive.google.com
-    if (key.startsWith('https://drive.google.com')) {
-      const dateStr = m.dateOverride || m.updatedAt
-      let date = new Date()
-      if (dateStr) {
-        const parsed = Date.parse(dateStr)
-        if (!isNaN(parsed)) {
-          date = new Date(parsed)
-        }
-      }
-      
-      // Extract filename from the URL if possible, or use a generic name
-      const filename = key.split('/').pop() || 'photo.jpg'
-      
-      // Use proxy to avoid CORS issues
-      const proxyUrl = `/api/drive-proxy?url=${encodeURIComponent(key)}`
-      
-      drivePhotos.push({
-        key,
-        filename,
-        date,
-        srcThumb: proxyUrl, // Proxied URL
-        srcFull: proxyUrl,  // Proxied URL
-        message: typeof m.message === 'string' ? m.message : undefined,
-        featured: !!m.featured,
-        order: typeof m.order === 'number' ? m.order : undefined
-      })
+    if (!isRawApiKey(key) && !key.startsWith('https://drive.google.com')) continue
+
+    const dateStr = m.dateOverride || m.updatedAt
+    let date = parseDateFromRawKey(key) || new Date()
+    if (dateStr) {
+      const parsed = Date.parse(dateStr)
+      if (!Number.isNaN(parsed)) date = new Date(parsed)
     }
+
+    const migratedUrl = typeof (m as any).migratedToDriveUrl === 'string' ? (m as any).migratedToDriveUrl : undefined
+    const driveUrl = migratedUrl || (key.startsWith('https://drive.google.com') ? key : undefined)
+    const src = driveUrl ? `/api/drive-proxy?url=${encodeURIComponent(driveUrl)}` : key
+
+    byKey.set(key, {
+      key,
+      filename: filenameFromKey(key),
+      date,
+      srcThumb: src,
+      srcFull: src,
+      message: typeof m.message === 'string' ? m.message : undefined,
+      featured: !!m.featured,
+      order: typeof m.order === 'number' ? m.order : undefined
+    })
   }
 
   // Then, get photos from local filesystem
@@ -176,8 +200,8 @@ export async function getLocalPhotos(): Promise<LocalPhoto[]> {
       filePaths.push(p)
     }
   } catch (error) {
-    // If photos folder doesn't exist, just use drive photos
-    console.log('Photos folder not found, using only Google Drive photos')
+    // If photos folder doesn't exist (common on Vercel), fall back to meta-derived list.
+    // Avoid noisy logs in production.
   }
 
   // No cache signature needed; always recompute for realtime updates.
@@ -199,6 +223,10 @@ export async function getLocalPhotos(): Promise<LocalPhoto[]> {
 
     const { thumb, full } = safeApiPath(root, p)
     const m = meta[full] || {}
+
+    // If this photo was migrated to Drive, prefer serving from Drive (works on Vercel).
+    const migratedUrl = typeof (m as any).migratedToDriveUrl === 'string' ? (m as any).migratedToDriveUrl : undefined
+    const driveSrc = migratedUrl ? `/api/drive-proxy?url=${encodeURIComponent(migratedUrl)}` : undefined
     if (typeof m.dateOverride === 'string') {
       const overrideTs = Date.parse(m.dateOverride)
       if (!Number.isNaN(overrideTs)) {
@@ -217,8 +245,8 @@ export async function getLocalPhotos(): Promise<LocalPhoto[]> {
       key: full,
       filename: path.basename(p),
       date,
-      srcThumb: thumb,
-      srcFull: full,
+      srcThumb: driveSrc || thumb,
+      srcFull: driveSrc || full,
       camera,
       message: typeof m.message === 'string' ? m.message : undefined,
       featured: !!m.featured,
@@ -226,9 +254,25 @@ export async function getLocalPhotos(): Promise<LocalPhoto[]> {
     })
   }
 
-  // Combine local and drive photos
-  const allPhotos = [...drivePhotos, ...items]
-  allPhotos.sort((a, b) => a.date.getTime() - b.date.getTime())
+  // Merge filesystem-derived items into the meta-derived set.
+  // Prefer filesystem-derived dates/EXIF when available, but keep meta fields.
+  for (const it of items) {
+    const existing = byKey.get(it.key)
+    if (!existing) {
+      byKey.set(it.key, it)
+      continue
+    }
+    byKey.set(it.key, {
+      ...it,
+      message: existing.message ?? it.message,
+      featured: existing.featured ?? it.featured,
+      order: typeof existing.order === 'number' ? existing.order : it.order,
+      // If meta has an explicit override, keep it.
+      date: (meta[it.key]?.dateOverride ? existing.date : it.date)
+    })
+  }
 
+  const allPhotos = Array.from(byKey.values())
+  allPhotos.sort((a, b) => a.date.getTime() - b.date.getTime())
   return allPhotos
 }

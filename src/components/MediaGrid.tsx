@@ -9,8 +9,11 @@ import dynamic from 'next/dynamic'
 const Lightbox = dynamic(() => import('./Lightbox'))
 
 type Item = {
-  id: string
-  relativePath: string
+  id?: string
+  key?: string
+  relativePath?: string
+  srcThumb?: string
+  srcFull?: string
   type: string
   message?: string | null
   dateTaken?: string | Date | null
@@ -43,16 +46,24 @@ export default function MediaGrid({ items }: { items: Item[] }){
               const index = rowIndex * columnCount + columnIndex
               const item = items[index]
               if (!item) return null
+
+              const photoSrc = item.srcThumb || (item.relativePath ? `/${item.relativePath}` : '')
+              const videoSrc = item.srcFull || (item.relativePath ? `/${item.relativePath}` : '')
+
               return (
                 <div style={style} className="p-1">
                   <MotionDiv whileHover={{ scale: 1.03 }} className="w-full h-full overflow-hidden rounded cursor-pointer" onClick={() => handleClick(item)}>
                     {item.type === 'photo' ? (
                       <div className="relative w-full h-full bg-gray-100">
-                        <Image src={`/${item.relativePath}`} alt={item.message || ''} fill sizes="(max-width: 1024px) 25vw, 250px" style={{ objectFit: 'cover' }} />
+                        {photoSrc ? (
+                          <Image src={photoSrc} alt={item.message || ''} fill sizes="(max-width: 1024px) 25vw, 250px" style={{ objectFit: 'cover' }} />
+                        ) : null}
                       </div>
                     ) : (
                       <div className="relative w-full h-full bg-black">
-                        <video src={`/${item.relativePath}`} className="w-full h-full object-cover" muted preload="metadata" />
+                        {videoSrc ? (
+                          <video src={videoSrc} className="w-full h-full object-cover" muted preload="metadata" />
+                        ) : null}
                       </div>
                     )}
                   </MotionDiv>
