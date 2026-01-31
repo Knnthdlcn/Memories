@@ -37,35 +37,11 @@ export async function GET(
   }
 
   try {
-    console.log(`[drive-media] Fetching file ${id}${w ? ` with width=${w}` : ''}`)
+    console.log(`[drive-media] Fetching file ${id}`)
     const buf = await downloadFromGoogleDrive(id)
     console.log(`[drive-media] Downloaded ${buf.length} bytes`)
 
-    // If width requested, return a resized WebP (much faster on mobile).
-    if (w) {
-      try {
-        const sharp = (await import('sharp')).default
-        const out = await sharp(buf)
-          .resize({ width: w, withoutEnlargement: true })
-          .webp({ quality: 72 })
-          .toBuffer()
-        
-        console.log(`[drive-media] Resized to ${out.length} bytes`)
-
-        return new NextResponse(new Blob([toU8(out)]), {
-          status: 200,
-          headers: {
-            'Content-Type': 'image/webp',
-            'Cache-Control': 'public, max-age=2592000, stale-while-revalidate=86400'
-          }
-        })
-      } catch (sharpErr: any) {
-        console.error('[drive-media] Sharp failed, returning original:', sharpErr.message)
-        // Fall through to return original
-      }
-    }
-
-    // Default: return original bytes (most uploads are JPEG/PNG; browsers can often sniff)
+    // Return original image directly
     return new NextResponse(new Blob([toU8(buf)]), {
       status: 200,
       headers: {
@@ -77,7 +53,6 @@ export async function GET(
     console.error('[drive-media] ERROR:', {
       message: e?.message,
       name: e?.name,
-      stack: e?.stack?.split('\n').slice(0, 3)
     })
     const msg = e?.message || 'Failed to fetch from Drive'
     return new NextResponse(`Error: ${msg}`, { status: 500 })
