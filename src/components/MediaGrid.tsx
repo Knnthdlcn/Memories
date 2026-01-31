@@ -3,7 +3,6 @@ import React, { useMemo, useState } from 'react'
 import AutoSizer from 'react-virtualized-auto-sizer'
 import { FixedSizeGrid as Grid } from 'react-window'
 import { motion } from 'framer-motion'
-import Image from 'next/image'
 import dynamic from 'next/dynamic'
 
 const Lightbox = dynamic(() => import('./Lightbox'))
@@ -56,7 +55,13 @@ export default function MediaGrid({ items }: { items: Item[] }){
                     {item.type === 'photo' ? (
                       <div className="relative w-full h-full bg-gray-100">
                         {photoSrc ? (
-                          <Image src={photoSrc} alt={item.message || ''} fill sizes="(max-width: 1024px) 25vw, 250px" style={{ objectFit: 'cover' }} />
+                          <img
+                            src={photoSrc}
+                            alt={item.message || ''}
+                            className="absolute inset-0 w-full h-full object-cover"
+                            loading="lazy"
+                            decoding="async"
+                          />
                         ) : null}
                       </div>
                     ) : (

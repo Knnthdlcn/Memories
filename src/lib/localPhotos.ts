@@ -177,7 +177,9 @@ export async function getLocalPhotos(): Promise<LocalPhoto[]> {
 
     const migratedUrl = typeof (m as any).migratedToDriveUrl === 'string' ? (m as any).migratedToDriveUrl : undefined
     const driveUrl = migratedUrl || (key.startsWith('https://drive.google.com') ? key : undefined)
-    const src = driveUrl ? `/api/drive-proxy?url=${encodeURIComponent(driveUrl)}` : key
+    // Use direct Drive URLs for <img> tags. This avoids relying on a proxy route and
+    // works in Vercel deployments even if /api/drive-proxy isn't reachable.
+    const src = driveUrl || key
 
     byKey.set(key, {
       key,
@@ -226,7 +228,7 @@ export async function getLocalPhotos(): Promise<LocalPhoto[]> {
 
     // If this photo was migrated to Drive, prefer serving from Drive (works on Vercel).
     const migratedUrl = typeof (m as any).migratedToDriveUrl === 'string' ? (m as any).migratedToDriveUrl : undefined
-    const driveSrc = migratedUrl ? `/api/drive-proxy?url=${encodeURIComponent(migratedUrl)}` : undefined
+    const driveSrc = migratedUrl || undefined
     if (typeof m.dateOverride === 'string') {
       const overrideTs = Date.parse(m.dateOverride)
       if (!Number.isNaN(overrideTs)) {
