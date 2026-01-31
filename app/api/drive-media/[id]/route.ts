@@ -65,9 +65,13 @@ export async function GET(
       }
     }
 
-    // Default: try to return original bytes. Most uploads are JPEG/PNG; browsers can often sniff.
-    // (If needed later, we can add a Drive metadata call to set exact mimeType.)
-    return new NextResponse(new Blob([toU8(buf)]), {
+    // Default: try[drive-media] ERROR:', {
+      message: e?.message,
+      name: e?.name,
+      stack: e?.stack?.split('\n').slice(0, 3)
+    })
+    const msg = e?.message || 'Failed to fetch from Drive'
+    return new NextResponse(`Error: ${msg}`, { status: 500
       status: 200,
       headers: {
         'Content-Type': 'image/jpeg',
