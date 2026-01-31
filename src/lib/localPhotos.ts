@@ -122,6 +122,19 @@ function parseDateFromRawKey(key: string): Date | undefined {
   return isValidDate(d) ? d : undefined
 }
 
+function extractDriveFileId(url: string): string | undefined {
+  try {
+    const u = new URL(url)
+    // Common patterns we generate:
+    // https://drive.google.com/uc?export=view&id=<fileId>
+    // https://drive.google.com/uc?export=download&id=<fileId>
+    const id = u.searchParams.get('id')
+    return id || undefined
+  } catch {
+    return undefined
+  }
+}
+
 async function readExifDateAndCamera(filePath: string): Promise<{ date?: Date; camera?: string }> {
   // Read only the first chunk; EXIF is stored near the beginning for JPEGs.
   // This is best-effort and will safely fall back to filesystem timestamps.
@@ -177,16 +190,17 @@ export async function getLocalPhotos(): Promise<LocalPhoto[]> {
 
     const migratedUrl = typeof (m as any).migratedToDriveUrl === 'string' ? (m as any).migratedToDriveUrl : undefined
     const driveUrl = migratedUrl || (key.startsWith('https://drive.google.com') ? key : undefined)
-    // Use direct Drive URLs for <img> tags. This avoids relying on a proxy route and
-    // works in Vercel deployments even if /api/drive-proxy isn't reachable.
-    const src = driveUrl || key
+    const fileId = driveUrl ? extractDriveFileId(driveUrl) : undefined
+    // Serve Drive media through our authenticated API route so it works even if files aren't public.
+    const srcThumb = fileId ? `/api/drive-media/${encodeURIComponent(fileId)}?w=600` : (driveUrl || key)
+    const srcFull = fileId ? `/api/drive-media/${encodeURIComponent(fileId)}` : (driveUrl || key)
 
     byKey.set(key, {
       key,
       filename: filenameFromKey(key),
       date,
-      srcThumb: src,
-      srcFull: src,
+      srcThumb,
+      srcFull,
       message: typeof m.message === 'string' ? m.message : undefined,
       featured: !!m.featured,
       order: typeof m.order === 'number' ? m.order : undefined
@@ -228,7 +242,9 @@ export async function getLocalPhotos(): Promise<LocalPhoto[]> {
 
     // If this photo was migrated to Drive, prefer serving from Drive (works on Vercel).
     const migratedUrl = typeof (m as any).migratedToDriveUrl === 'string' ? (m as any).migratedToDriveUrl : undefined
-    const driveSrc = migratedUrl || undefined
+    const fileId = migratedUrl ? extractDriveFileId(migratedUrl) : undefined
+    const driveThumb = fileId ? `/api/drive-media/${encodeURIComponent(fileId)}?w=600` : undefined
+    const driveFull = fileId ? `/api/drive-media/${encodeURIComponent(fileId)}` : undefined
     if (typeof m.dateOverride === 'string') {
       const overrideTs = Date.parse(m.dateOverride)
       if (!Number.isNaN(overrideTs)) {
@@ -247,8 +263,8 @@ export async function getLocalPhotos(): Promise<LocalPhoto[]> {
       key: full,
       filename: path.basename(p),
       date,
-      srcThumb: driveSrc || thumb,
-      srcFull: driveSrc || full,
+      srcThumb: driveThumb || thumb,
+      srcFull: driveFull || full,
       camera,
       message: typeof m.message === 'string' ? m.message : undefined,
       featured: !!m.featured,
