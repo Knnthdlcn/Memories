@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server'
-import sharp from 'sharp'
 import { downloadFromGoogleDrive } from '@/src/lib/googleDrive'
 
 function toU8(buf: Buffer) {
@@ -38,22 +37,32 @@ export async function GET(
   }
 
   try {
+    console.log(`[drive-media] Fetching file ${id}${w ? ` with width=${w}` : ''}`)
     const buf = await downloadFromGoogleDrive(id)
+    console.log(`[drive-media] Downloaded ${buf.length} bytes`)
 
     // If width requested, return a resized WebP (much faster on mobile).
     if (w) {
-      const out = await sharp(buf)
-        .resize({ width: w, withoutEnlargement: true })
-        .webp({ quality: 72 })
-        .toBuffer()
+      try {
+        const sharp = (await import('sharp')).default
+        const out = await sharp(buf)
+          .resize({ width: w, withoutEnlargement: true })
+          .webp({ quality: 72 })
+          .toBuffer()
+        
+        console.log(`[drive-media] Resized to ${out.length} bytes`)
 
-      return new NextResponse(new Blob([toU8(out)]), {
-        status: 200,
-        headers: {
-          'Content-Type': 'image/webp',
-          'Cache-Control': 'public, max-age=2592000, stale-while-revalidate=86400'
-        }
-      })
+        return new NextResponse(new Blob([toU8(out)]), {
+          status: 200,
+          headers: {
+            'Content-Type': 'image/webp',
+            'Cache-Control': 'public, max-age=2592000, stale-while-revalidate=86400'
+          }
+        })
+      } catch (sharpErr: any) {
+        console.error('[drive-media] Sharp failed, returning original:', sharpErr.message)
+        // Fall through to return original
+      }
     }
 
     // Default: try to return original bytes. Most uploads are JPEG/PNG; browsers can often sniff.
