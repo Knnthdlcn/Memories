@@ -65,13 +65,8 @@ export async function GET(
       }
     }
 
-    // Default: try[drive-media] ERROR:', {
-      message: e?.message,
-      name: e?.name,
-      stack: e?.stack?.split('\n').slice(0, 3)
-    })
-    const msg = e?.message || 'Failed to fetch from Drive'
-    return new NextResponse(`Error: ${msg}`, { status: 500
+    // Default: return original bytes (most uploads are JPEG/PNG; browsers can often sniff)
+    return new NextResponse(new Blob([toU8(buf)]), {
       status: 200,
       headers: {
         'Content-Type': 'image/jpeg',
@@ -79,8 +74,12 @@ export async function GET(
       }
     })
   } catch (e: any) {
-    console.error('Drive media fetch error:', e)
+    console.error('[drive-media] ERROR:', {
+      message: e?.message,
+      name: e?.name,
+      stack: e?.stack?.split('\n').slice(0, 3)
+    })
     const msg = e?.message || 'Failed to fetch from Drive'
-    return new NextResponse(`Error: ${msg}`, { status: 502 })
+    return new NextResponse(`Error: ${msg}`, { status: 500 })
   }
 }
