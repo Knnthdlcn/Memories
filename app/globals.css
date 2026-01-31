@@ -1,0 +1,106 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,body,#root{
+  height:100%;
+}
+
+body{
+  @apply bg-gradient-to-br from-purple-50 via-purple-100 to-pink-50 text-gray-800;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
+}
+
+.soft-card{
+  /* Frosted glass / glassmorphism aesthetic */
+  background: linear-gradient(135deg, rgba(255,255,255,0.88), rgba(250,245,255,0.92));
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  border-radius: 20px;
+  border: 1.5px solid rgba(255,255,255,0.85);
+  box-shadow: 
+    0 8px 32px rgba(139,92,246,0.12),
+    0 16px 64px rgba(99,102,241,0.08),
+    inset 0 1px 0 rgba(255,255,255,0.6);
+}
+
+.crystal-card{
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(135deg, rgba(255,255,255,0.9), rgba(244,246,255,0.96));
+  backdrop-filter: blur(30px) saturate(180%);
+  -webkit-backdrop-filter: blur(30px) saturate(180%);
+  border-radius: 24px;
+  border: 1.5px solid rgba(255,255,255,0.98);
+  box-shadow:
+    0 26px 120px rgba(15,23,42,0.22),
+    0 14px 44px rgba(139,92,246,0.14),
+    inset 0 1px 0 rgba(255,255,255,0.7);
+}
+
+.crystal-card::before{
+  content: "";
+  position: absolute;
+  inset: -60% -40% auto -40%;
+  height: 240px;
+  transform: rotate(14deg);
+  background: linear-gradient(to right, rgba(255,255,255,0.55), rgba(255,255,255,0.0));
+  pointer-events: none;
+}
+
+.crystal-edge{
+  position: relative;
+  overflow: hidden;
+  border-radius: 22px;
+  border: 1px solid rgba(255,255,255,0.85);
+  background: linear-gradient(135deg, rgba(255,255,255,0.78), rgba(240,244,255,0.9));
+  box-shadow:
+    0 18px 70px rgba(15,23,42,0.20),
+    inset 0 0 0 1px rgba(255,255,255,0.35);
+}
+
+.crystal-edge::after{
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 15% 15%, rgba(255,255,255,0.6), transparent 35%);
+  pointer-events: none;
+}
+
+@keyframes floaty {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+@keyframes wiggle {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-2deg); }
+  75% { transform: rotate(2deg); }
+}
+
+.floaty{ animation: floaty 7s ease-in-out infinite; }
+.wiggle{ animation: wiggle 4.5s ease-in-out infinite; }
+
+@keyframes photoStripUp {
+  0% { transform: translateY(0); }
+  100% { transform: translateY(-50%); }
+}
+
+@keyframes photoStripDown {
+  0% { transform: translateY(-50%); }
+  100% { transform: translateY(0); }
+}
+
+.photoStripUp{ animation: photoStripUp 22s linear infinite; }
+.photoStripDown{ animation: photoStripDown 22s linear infinite; }
+
+.photoStripFade{
+  /* No fade: keep strips continuous */
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
+.photoStripImg{
+  /* Keep background photos subtle: low detail, airy, not distracting */
+  filter: grayscale(100%) saturate(55%) blur(1.2px) brightness(1.05) contrast(0.92);
+}

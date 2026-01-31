@@ -1,0 +1,21 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Media {
+  id          String   @id @default(uuid())
+  type        String
+  relativePath String  @unique
+  dateTaken   DateTime?
+  message     String?  
+  featured    Boolean  @default(false)
+  driveFileId String?  // Google Drive file ID for photos
+  driveUrl    String?  // Direct URL to Google Drive file
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
