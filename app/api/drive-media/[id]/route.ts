@@ -7,24 +7,15 @@ function toU8(buf: Buffer) {
   return new Uint8Array(buf.buffer as ArrayBuffer, buf.byteOffset, buf.byteLength)
 }
 
-function extractWidth(reqUrl: string) {
-  const url = new URL(reqUrl)
-  const wParam = url.searchParams.get('w')
-  if (!wParam) return null
-  const w = Number(wParam)
-  if (!Number.isFinite(w)) return null
-  return Math.min(Math.max(Math.floor(w), 32), 1600)
-}
-
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
+export const runtime = 'nodejs'
 
 export async function GET(
   req: Request,
   ctx: { params: Promise<{ id: string }> }
 ) {
   const { id } = await ctx.params
-  const w = extractWidth(req.url)
 
   if (!id || typeof id !== 'string') {
     return new NextResponse('Missing id', { status: 400 })
@@ -42,7 +33,7 @@ export async function GET(
     console.log(`[drive-media] Downloaded ${buf.length} bytes`)
 
     // Return original image directly
-    return new NextResponse(new Blob([toU8(buf)]), {
+    return new NextResponse(toU8(buf), {
       status: 200,
       headers: {
         'Content-Type': 'image/jpeg',

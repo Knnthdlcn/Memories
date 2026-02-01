@@ -1,52 +1,61 @@
 import { NextResponse } from 'next/server'
-import fs from 'fs/promises'
-import path from 'path'
+import { getPhotoMetaStore } from '@/src/lib/photosMeta'
 
-const ALLOWED_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.avif'])
-
-async function* walk(dir: string): AsyncGenerator<string> {
-  const entries = await fs.readdir(dir, { withFileTypes: true })
-  for (const entry of entries) {
-    const full = path.join(dir, entry.name)
-    if (entry.isDirectory()) {
-      yield* walk(full)
-    } else {
-      yield full
-    }
+function extractDriveFileId(url: string): string | undefined {
+  try {
+    const u = new URL(url)
+    const id = u.searchParams.get('id')
+    return id || undefined
+  } catch {
+    return undefined
   }
+}
+
+function ensureWidthParam(urlPath: string, width: number) {
+  if (!urlPath.includes('?')) return `${urlPath}?w=${width}`
+  if (urlPath.includes('w=')) return urlPath
+  return `${urlPath}&w=${width}`
+}
+
+function toThumbUrl(key: string, meta: any): string | undefined {
+  const migratedUrl = typeof meta?.migratedToDriveUrl === 'string' ? meta.migratedToDriveUrl : undefined
+  const driveUrl = migratedUrl || (typeof key === 'string' && key.startsWith('https://drive.google.com') ? key : undefined)
+  const fileId = driveUrl ? extractDriveFileId(driveUrl) : undefined
+  if (fileId) return `/api/drive-media/${encodeURIComponent(fileId)}?w=420`
+
+  if (typeof key === 'string' && key.startsWith('/api/photos/raw/')) {
+    return ensureWidthParam(key, 420)
+  }
+
+  return undefined
 }
 
 export async function GET(req: Request) {
   const url = new URL(req.url)
   const limit = Math.min(Math.max(Number(url.searchParams.get('limit') || '80'), 1), 200)
 
-  const root = path.join(process.cwd(), 'photos')
-
-  // Reservoir sample to avoid loading everything into memory
+  // Reservoir sample to avoid loading everything into memory.
+  // IMPORTANT: Use photos-meta.json so this works on Vercel (no local photos folder).
   const reservoir: string[] = []
   let seen = 0
 
   try {
-    for await (const filePath of walk(root)) {
-      const ext = path.extname(filePath).toLowerCase()
-      if (!ALLOWED_EXT.has(ext)) continue
-
-      const rel = path.relative(root, filePath).split(path.sep)
-      // Build a safe URL path with encoded segments
-      const encoded = rel.map(s => encodeURIComponent(s)).join('/')
-      const urlPath = `/api/photos/raw/${encoded}?w=420`
+    const meta = await getPhotoMetaStore()
+    for (const [key, m] of Object.entries(meta)) {
+      const thumb = toThumbUrl(key, m)
+      if (!thumb) continue
 
       seen += 1
       if (reservoir.length < limit) {
-        reservoir.push(urlPath)
+        reservoir.push(thumb)
       } else {
         const j = Math.floor(Math.random() * seen)
-        if (j < limit) reservoir[j] = urlPath
+        if (j < limit) reservoir[j] = thumb
       }
     }
-
-    return NextResponse.json({ ok: true, count: reservoir.length, items: reservoir })
-  } catch {
-    return NextResponse.json({ ok: true, count: 0, items: [] })
+  } catch (e) {
+    // best-effort; fall through
   }
+
+  return NextResponse.json({ ok: true, count: reservoir.length, items: reservoir })
 }

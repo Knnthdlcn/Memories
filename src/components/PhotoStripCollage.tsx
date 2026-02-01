@@ -1,7 +1,6 @@
 "use client"
 
 import React, { useEffect, useMemo, useState } from 'react'
-import { getLocalPhotos } from '../lib/localPhotos'
 
 function clamp(n: number, min: number, max: number){
   return Math.min(max, Math.max(min, n))
