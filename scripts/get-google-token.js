@@ -26,8 +26,10 @@ loadEnvFile(path.resolve(process.cwd(), '.env'));
 loadEnvFile(path.resolve(process.cwd(), '.env.local'));
 
 // Uses OAuth Client credentials from environment variables.
-// IMPORTANT: Use drive.readonly so the token can READ existing Drive files.
-// The narrower drive.file scope can lead to 404 "File not found" for files not created by this app.
+// IMPORTANT:
+// - Use drive.readonly so the token can READ existing Drive files.
+// - Include drive.file so uploads/permissions still work in admin routes.
+// The narrower drive.file-only scope can lead to 404 "File not found" for files not created/opened by this app.
 
 function requireEnv(name) {
   const v = process.env[name];
@@ -39,7 +41,10 @@ const CLIENT_ID = requireEnv('GOOGLE_CLIENT_ID');
 const CLIENT_SECRET = requireEnv('GOOGLE_CLIENT_SECRET');
 const REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || 'http://localhost:3000/oauth2callback';
 
-const SCOPES = ['https://www.googleapis.com/auth/drive.readonly'];
+const SCOPES = [
+  'https://www.googleapis.com/auth/drive.readonly',
+  'https://www.googleapis.com/auth/drive.file',
+];
 
 const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
 authUrl.searchParams.set('client_id', CLIENT_ID);
@@ -84,7 +89,14 @@ rl.question('Enter the code: ', async (code) => {
     console.log(`GOOGLE_CLIENT_ID=${CLIENT_ID}`);
     console.log(`GOOGLE_CLIENT_SECRET=${CLIENT_SECRET}`);
     console.log(`GOOGLE_REDIRECT_URI=${REDIRECT_URI}`);
-    console.log(`GOOGLE_REFRESH_TOKEN=${tokens.refresh_token}`);
+
+    if (!tokens.refresh_token) {
+      console.log('\n⚠️  Google did NOT return a refresh_token. This usually means you already granted consent before.');
+      console.log('Fix: Go to https://myaccount.google.com/permissions and remove this app, then run this script again.');
+      console.log('Also make sure you click through the consent screen (prompt=consent) and you are logged into the correct Google account.\n');
+    } else {
+      console.log(`GOOGLE_REFRESH_TOKEN=${tokens.refresh_token}`);
+    }
     console.log('\n');
   } catch (error) {
     console.error('❌ Error retrieving tokens:', error.message);
