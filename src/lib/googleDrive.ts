@@ -332,11 +332,12 @@ export async function fetchDriveMediaResponse(fileId: string): Promise<Response>
 
 export async function fetchDriveThumbnailResponse(thumbnailUrl: string): Promise<Response> {
   const token = await getAccessTokenForMedia()
-  const response = await fetch(thumbnailUrl, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  })
+  // thumbnailLink often points to a googleusercontent.com host that may not honor
+  // Authorization headers. Using access_token in the query is more reliable here.
+  const url = new URL(thumbnailUrl)
+  url.searchParams.set('access_token', token)
+
+  const response = await fetch(url.toString())
 
   if (!response.ok) {
     const text = await response.text()

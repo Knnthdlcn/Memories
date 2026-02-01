@@ -1,12 +1,6 @@
 import { NextResponse } from 'next/server'
 import { fetchDriveMediaResponse, fetchDriveThumbnailResponse, getDriveFileMeta } from '@/src/lib/googleDrive'
 
-function toU8(buf: Buffer) {
-  // @types/node models Buffer.buffer as ArrayBufferLike (which can include SharedArrayBuffer).
-  // In practice here it's an ArrayBuffer; cast to satisfy BlobPart typing.
-  return new Uint8Array(buf.buffer as ArrayBuffer, buf.byteOffset, buf.byteLength)
-}
-
 function extractWidth(reqUrl: string) {
   const url = new URL(reqUrl)
   const wParam = url.searchParams.get('w')
@@ -46,20 +40,28 @@ export async function GET(
   try {
     // If a width is requested, prefer Drive's thumbnail endpoint (smaller/faster).
     if (w) {
-      const meta = await getDriveFileMeta(id)
-      if (meta.thumbnailLink) {
-        const thumbUrl = sizeDriveThumb(meta.thumbnailLink, w)
-        const thumbRes = await fetchDriveThumbnailResponse(thumbUrl)
-        const contentType = thumbRes.headers.get('content-type') || 'image/jpeg'
-        const cache = 'public, max-age=2592000, stale-while-revalidate=86400'
+      try {
+        const meta = await getDriveFileMeta(id)
+        if (meta.thumbnailLink) {
+          const thumbUrl = sizeDriveThumb(meta.thumbnailLink, w)
+          const thumbRes = await fetchDriveThumbnailResponse(thumbUrl)
+          const contentType = thumbRes.headers.get('content-type') || 'image/jpeg'
+          const cache = 'public, max-age=2592000, stale-while-revalidate=86400'
 
-        return new NextResponse(thumbRes.body, {
-          status: 200,
-          headers: {
-            'Content-Type': contentType,
-            'Cache-Control': cache,
-          },
+          return new NextResponse(thumbRes.body, {
+            status: 200,
+            headers: {
+              'Content-Type': contentType,
+              'Cache-Control': cache,
+            },
+          })
+        }
+      } catch (thumbErr: any) {
+        console.error('[drive-media] Thumbnail fetch failed; falling back to original:', {
+          message: thumbErr?.message,
+          name: thumbErr?.name,
         })
+        // fall through to original
       }
     }
 
