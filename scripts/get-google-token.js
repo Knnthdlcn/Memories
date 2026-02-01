@@ -1,11 +1,20 @@
 const readline = require('readline');
 
-// Replace these with your OAuth credentials from Google Cloud Console
-const CLIENT_ID = 'YOUR_CLIENT_ID';
-const CLIENT_SECRET = 'YOUR_CLIENT_SECRET';
-const REDIRECT_URI = 'http://localhost:3000/oauth2callback';
+// Uses OAuth Client credentials from environment variables.
+// IMPORTANT: Use drive.readonly so the token can READ existing Drive files.
+// The narrower drive.file scope can lead to 404 "File not found" for files not created by this app.
 
-const SCOPES = ['https://www.googleapis.com/auth/drive.file'];
+function requireEnv(name) {
+  const v = process.env[name];
+  if (!v) throw new Error(`${name} is required (set it in .env.local or your shell)`);
+  return v;
+}
+
+const CLIENT_ID = requireEnv('GOOGLE_CLIENT_ID');
+const CLIENT_SECRET = requireEnv('GOOGLE_CLIENT_SECRET');
+const REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || 'http://localhost:3000/oauth2callback';
+
+const SCOPES = ['https://www.googleapis.com/auth/drive.readonly'];
 
 const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
 authUrl.searchParams.set('client_id', CLIENT_ID);
