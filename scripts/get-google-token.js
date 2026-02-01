@@ -54,6 +54,12 @@ authUrl.searchParams.set('scope', SCOPES.join(' '));
 authUrl.searchParams.set('access_type', 'offline');
 authUrl.searchParams.set('prompt', 'consent');
 
+// Optional: nudge Google to use the intended account.
+// This doesn't guarantee selection, but helps a lot when multiple accounts are logged in.
+if (process.env.GOOGLE_DRIVE_USER_EMAIL) {
+  authUrl.searchParams.set('login_hint', process.env.GOOGLE_DRIVE_USER_EMAIL);
+}
+
 console.log('\n🔐 STEP 1: Authorize this app by visiting this URL:\n');
 console.log(authUrl);
 console.log('\n📝 STEP 2: After authorization, copy the CODE from the URL and paste it here:\n');

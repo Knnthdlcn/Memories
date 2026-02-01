@@ -85,12 +85,35 @@ Storybook/
 ### Error: "GOOGLE_DRIVE_FOLDER_ID not set"
 - Make sure `.env.local` has: `GOOGLE_DRIVE_FOLDER_ID=your_folder_id`
 
-### Error: "Cannot find google-credentials.json"
-- Make sure the JSON file is in project root: `C:\Users\Kenneth\Downloads\Storybook\`
+### Error: "Access blocked: Authorization Error" / `Error 401: disabled_client`
+This means the OAuth Client ID you’re using was **disabled** (or the entire Google Cloud project was disabled).
 
-### Photos not uploading
-- Check that service account has "Editor" access to the Google Drive folder
-- Verify Google Drive API is enabled in Google Cloud Console
+Fix:
+1. Go to Google Cloud Console (make sure you select the project that owns your OAuth Client).
+2. **APIs & Services → Credentials**
+	- Confirm your OAuth Client ID exists and is not deleted.
+3. **APIs & Services → OAuth consent screen**
+	- Ensure it is configured.
+	- If the app is in “Testing”, add your Google account as a **Test user**.
+4. **APIs & Services → Library**
+	- Enable **Google Drive API**.
+
+If you can’t find that Client ID in any project you control, create a new OAuth Client ID and update:
+`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` in `.env.local` and Vercel.
+
+### Photos not uploading / Drive 404 for file IDs
+If `/api/test-drive` shows `samplePhotoCheck.status: 404`, the refresh token can talk to Drive but cannot access your photo file IDs.
+
+Common causes:
+- You generated `GOOGLE_REFRESH_TOKEN` with a narrow scope (drive.file-only).
+- You generated the token under the wrong Google account (the photos are owned by another account).
+
+Fix:
+1. Revoke old consent: https://myaccount.google.com/permissions
+2. Generate a new token: `npm run google:token`
+3. Update `GOOGLE_REFRESH_TOKEN` in Vercel → redeploy.
+
+Tip: set `GOOGLE_DRIVE_USER_EMAIL` in `.env.local` to help Google pick the right account during consent.
 
 ---
 
