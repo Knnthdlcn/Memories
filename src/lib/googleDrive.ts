@@ -17,7 +17,14 @@ function requireEnv(name: string): string {
 }
 
 function buildUrl(base: string, pathname: string, params?: Record<string, string | undefined>) {
-  const url = new URL(pathname, base)
+  // IMPORTANT: `new URL('/files', 'https://www.googleapis.com/drive/v3')` becomes
+  // `https://www.googleapis.com/files` (it drops the `/drive/v3` path). Many of our
+  // callers use leading slashes, so we must join paths ourselves.
+  const url = new URL(base)
+  const cleanPath = pathname.replace(/^\/+/, '')
+  const basePath = url.pathname.replace(/\/+$/, '')
+  url.pathname = cleanPath ? `${basePath}/${cleanPath}` : (basePath || '/')
+
   if (params) {
     Object.entries(params).forEach(([key, value]) => {
       if (value !== undefined) url.searchParams.set(key, value)
