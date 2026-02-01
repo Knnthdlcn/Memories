@@ -78,6 +78,11 @@ async function driveFetch(url: string, init: RequestInit = {}): Promise<Response
   return fetch(url, { ...init, headers })
 }
 
+async function getAccessTokenForMedia(): Promise<string> {
+  // Alias for clarity (media fetches may be frequent, still benefits from cache)
+  return getAccessToken()
+}
+
 async function driveFetchJson<T>(url: string, init: RequestInit = {}): Promise<T> {
   const response = await driveFetch(url, init)
   if (!response.ok) {
@@ -294,4 +299,50 @@ export async function downloadFromGoogleDrive(fileId: string): Promise<Buffer> {
 
   const data = await driveFetchArrayBuffer(downloadUrl)
   return Buffer.from(data)
+}
+
+type DriveFileMeta = {
+  mimeType?: string
+  thumbnailLink?: string
+}
+
+export async function getDriveFileMeta(fileId: string): Promise<DriveFileMeta> {
+  const metaUrl = buildUrl(DRIVE_API_BASE, `/files/${fileId}`, {
+    fields: 'mimeType,thumbnailLink',
+    supportsAllDrives: 'true',
+  })
+  return driveFetchJson<DriveFileMeta>(metaUrl)
+}
+
+export async function fetchDriveMediaResponse(fileId: string): Promise<Response> {
+  const downloadUrl = buildUrl(DRIVE_API_BASE, `/files/${fileId}`, {
+    alt: 'media',
+    supportsAllDrives: 'true',
+  })
+
+  const response = await driveFetch(downloadUrl)
+  if (!response.ok) {
+    const text = await response.text()
+    console.error('Drive media error:', response.status, text)
+    throw new Error(`Drive media error (${response.status}): ${text}`)
+  }
+
+  return response
+}
+
+export async function fetchDriveThumbnailResponse(thumbnailUrl: string): Promise<Response> {
+  const token = await getAccessTokenForMedia()
+  const response = await fetch(thumbnailUrl, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  })
+
+  if (!response.ok) {
+    const text = await response.text()
+    console.error('Drive thumbnail error:', response.status, text)
+    throw new Error(`Drive thumbnail error (${response.status}): ${text}`)
+  }
+
+  return response
 }

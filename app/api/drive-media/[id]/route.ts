@@ -1,10 +1,25 @@
 import { NextResponse } from 'next/server'
-import { downloadFromGoogleDrive } from '@/src/lib/googleDrive'
+import { fetchDriveMediaResponse, fetchDriveThumbnailResponse, getDriveFileMeta } from '@/src/lib/googleDrive'
 
 function toU8(buf: Buffer) {
   // @types/node models Buffer.buffer as ArrayBufferLike (which can include SharedArrayBuffer).
   // In practice here it's an ArrayBuffer; cast to satisfy BlobPart typing.
   return new Uint8Array(buf.buffer as ArrayBuffer, buf.byteOffset, buf.byteLength)
+}
+
+function extractWidth(reqUrl: string) {
+  const url = new URL(reqUrl)
+  const wParam = url.searchParams.get('w')
+  if (!wParam) return null
+  const w = Number(wParam)
+  if (!Number.isFinite(w)) return null
+  return Math.min(Math.max(Math.floor(w), 32), 1600)
+}
+
+function sizeDriveThumb(url: string, w: number) {
+  // Drive thumbnailLink often ends with "=s220" (or similar). Replace/append size.
+  if (/=s\d+/.test(url)) return url.replace(/=s\d+/, `=s${w}`)
+  return `${url}=s${w}`
 }
 
 export const dynamic = 'force-dynamic'
@@ -16,6 +31,7 @@ export async function GET(
   ctx: { params: Promise<{ id: string }> }
 ) {
   const { id } = await ctx.params
+  const w = extractWidth(req.url)
 
   if (!id || typeof id !== 'string') {
     return new NextResponse('Missing id', { status: 400 })
@@ -28,17 +44,36 @@ export async function GET(
   }
 
   try {
-    console.log(`[drive-media] Fetching file ${id}`)
-    const buf = await downloadFromGoogleDrive(id)
-    console.log(`[drive-media] Downloaded ${buf.length} bytes`)
+    // If a width is requested, prefer Drive's thumbnail endpoint (smaller/faster).
+    if (w) {
+      const meta = await getDriveFileMeta(id)
+      if (meta.thumbnailLink) {
+        const thumbUrl = sizeDriveThumb(meta.thumbnailLink, w)
+        const thumbRes = await fetchDriveThumbnailResponse(thumbUrl)
+        const contentType = thumbRes.headers.get('content-type') || 'image/jpeg'
+        const cache = 'public, max-age=2592000, stale-while-revalidate=86400'
 
-    // Return original image directly
-    return new NextResponse(toU8(buf), {
+        return new NextResponse(thumbRes.body, {
+          status: 200,
+          headers: {
+            'Content-Type': contentType,
+            'Cache-Control': cache,
+          },
+        })
+      }
+    }
+
+    // Fallback: stream original bytes from Drive.
+    const driveRes = await fetchDriveMediaResponse(id)
+    const contentType = driveRes.headers.get('content-type') || 'application/octet-stream'
+    const cache = 'public, max-age=604800, stale-while-revalidate=86400'
+
+    return new NextResponse(driveRes.body, {
       status: 200,
       headers: {
-        'Content-Type': 'image/jpeg',
-        'Cache-Control': 'public, max-age=604800, stale-while-revalidate=86400'
-      }
+        'Content-Type': contentType,
+        'Cache-Control': cache,
+      },
     })
   } catch (e: any) {
     console.error('[drive-media] ERROR:', {
