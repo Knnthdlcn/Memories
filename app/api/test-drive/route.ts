@@ -56,9 +56,29 @@ export async function GET() {
       })
     }
 
+    // Test 2.5: Identify which Drive account this token belongs to.
+    // This is extremely helpful when 404s happen due to wrong Google account.
+    let driveUser: any = null
+    try {
+      const aboutRes = await fetch('https://www.googleapis.com/drive/v3/about?fields=user(emailAddress,displayName)', {
+        headers: {
+          'Authorization': `Bearer ${tokenData.access_token}`
+        }
+      })
+
+      if (aboutRes.ok) {
+        const aboutData = await aboutRes.json()
+        driveUser = aboutData?.user || null
+      } else {
+        driveUser = { error: true, status: aboutRes.status, response: await aboutRes.text() }
+      }
+    } catch (e: any) {
+      driveUser = { error: true, message: e?.message || String(e) }
+    }
+
     // Test 3: Try a simple Drive API call (list items in root folder)
     const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID
-    const driveUrl = `https://www.googleapis.com/drive/v3/files?q='${folderId}'+in+parents&fields=files(id,name)&pageSize=5`
+    const driveUrl = `https://www.googleapis.com/drive/v3/files?q='${folderId}'+in+parents&fields=files(id,name)&pageSize=5&supportsAllDrives=true&includeItemsFromAllDrives=true`
     
     const driveResponse = await fetch(driveUrl, {
       headers: {
@@ -125,6 +145,7 @@ export async function GET() {
     return NextResponse.json({
       ok: true,
       message: 'All checks passed!',
+      driveUser,
       fileCount: driveData.files?.length || 0,
       sampleFiles: driveData.files?.slice(0, 3).map((f: any) => f.name) || [],
       samplePhotoCheck

@@ -1,4 +1,29 @@
+const fs = require('fs');
+const path = require('path');
 const readline = require('readline');
+
+function loadEnvFile(p) {
+  try {
+    const txt = fs.readFileSync(p, 'utf8');
+    for (const line of txt.split(/\r?\n/)) {
+      const l = line.trim();
+      if (!l || l.startsWith('#')) continue;
+      const m = l.match(/^([A-Z0-9_]+)=(.*)$/);
+      if (!m) continue;
+      let v = m[2];
+      if (v.startsWith('"') && v.endsWith('"')) v = v.slice(1, -1);
+      // Don't override values already provided by the shell.
+      if (process.env[m[1]] == null) process.env[m[1]] = v;
+    }
+  } catch {
+    // ignore
+  }
+}
+
+// Allow running the script without manually exporting env vars.
+// NOTE: Next.js loads .env.local automatically, but plain `node` scripts do not.
+loadEnvFile(path.resolve(process.cwd(), '.env'));
+loadEnvFile(path.resolve(process.cwd(), '.env.local'));
 
 // Uses OAuth Client credentials from environment variables.
 // IMPORTANT: Use drive.readonly so the token can READ existing Drive files.

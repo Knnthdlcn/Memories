@@ -9,7 +9,8 @@
     "postinstall": "prisma generate",
     "prisma:migrate": "prisma migrate dev --name init",
     "prisma:generate": "prisma generate",
-    "ingest": "node ./scripts/ingest.js"
+    "ingest": "node ./scripts/ingest.js",
+    "google:token": "node ./scripts/get-google-token.js"
   },
   "dependencies": {
     "@prisma/client": "5.14.0",
